@@ -7343,6 +7343,9 @@ ionic.scroll = {
   var ITEM_PLACEHOLDER_CLASS = 'item-placeholder';
   var ITEM_REORDERING_CLASS = 'item-reordering';
   var ITEM_REORDER_BTN_CLASS = 'item-reorder';
+  // [NEW - enable left/right swipe]
+  // direction-right is selector of left to right swipe-able container.
+  var DIRECTION_RIGHT_CLASS = 'direction-right';
 
   var DragOp = function() {};
   DragOp.prototype = {
@@ -7390,7 +7393,31 @@ ionic.scroll = {
     offsetX = parseFloat(content.style[ionic.CSS.TRANSFORM].replace('translate3d(', '').split(',')[0]) || 0;
 
     // Grab the buttons
-    buttons = content.parentNode.querySelector('.' + ITEM_OPTIONS_CLASS);
+    // [Ionic 1.1.0]
+    // buttons = content.parentNode.querySelector('.' + ITEM_OPTIONS_CLASS);
+    // [NEW - enable left/right swipe]
+    // Grab correct pane.
+    // Starting drag from zero and going to the left (opening a pane on right
+    // side), or starting drag on left side (offsetX < 0) and going to the
+    // right (closing the pane on the right side). Grab the pane on the right
+    // side - obviously.
+    if( (e.gesture.direction === "left"  && offsetX === 0) ||
+        (e.gesture.direction === "right" && offsetX < 0) ) {
+        // Contains item-options and does not contain direction-right classes
+        buttons = content.parentNode.querySelector('.' + ITEM_OPTIONS_CLASS
+                + ':not(.' + DIRECTION_RIGHT_CLASS +')');
+
+    // Starting drag from zero and going to the right (opening a pane on left
+    // side), or starting drag on right side (offsetX > 0) and going to the
+    // left (closing the pane on the leftt side). Grab the pane on the left
+    // side.
+    } else if ( (e.gesture.direction === "right" && offsetX === 0) ||
+                (e.gesture.direction === "left"  && offsetX > 0) ) {
+        // Contains item-options and direction-right classes.
+        buttons = content.parentNode.querySelector('.' + ITEM_OPTIONS_CLASS
+                + '.' + DIRECTION_RIGHT_CLASS);
+    }
+
     if (!buttons) {
       return;
     }
@@ -7402,7 +7429,10 @@ ionic.scroll = {
       buttons: buttons,
       buttonsWidth: buttonsWidth,
       content: content,
-      startOffsetX: offsetX
+      startOffsetX: offsetX,
+      // [NEW - enable left/right swipe]
+      // store direction swipe started with.
+      direction: e.gesture.direction
     };
   };
 
@@ -7459,7 +7489,19 @@ ionic.scroll = {
       buttonsWidth = this._currentDrag.buttonsWidth;
 
       // Grab the new X point, capping it at zero
-      var newX = Math.min(0, this._currentDrag.startOffsetX + e.gesture.deltaX);
+      // [Ionic 1.1.0]
+      // var newX = Math.min(0, this._currentDrag.startOffsetX + e.gesture.deltaX);
+      // [NEW - enable left/right swipe]
+      // Prevent drag from open position on one side to open position on other
+      // side.
+      var newX;
+      if (this._currentDrag.direction === "left"){
+          newX = Math.min(0, this._currentDrag.startOffsetX > 0 ? this._currentDrag.startOffsetX :
+                  (this._currentDrag.startOffsetX + e.gesture.deltaX) );
+      } else if (this._currentDrag.direction === "right"){
+          newX = Math.max(0, this._currentDrag.startOffsetX < 0 ? this._currentDrag.startOffsetX :
+                  (this._currentDrag.startOffsetX + e.gesture.deltaX) );
+      }
 
       // If the new X position is past the buttons, we need to slow down the drag (rubber band style)
       if (newX < -buttonsWidth) {
@@ -7485,7 +7527,27 @@ ionic.scroll = {
 
     // If we are currently dragging, we want to snap back into place
     // The final resting point X will be the width of the exposed buttons
-    var restingPoint = -self._currentDrag.buttonsWidth;
+    // [Ionic 1.1.0]
+    // var restingPoint = -self._currentDrag.buttonsWidth;
+    // [NEW - enable left/right swipe]
+    // Resting point X depends on swipe direction.
+    var restingPoint;
+    // If pane was opened (startOffsetX > 0 or startOffsetX < 0), snap back to
+    // zero (close the pane). Otherwie resting point X is the width of the
+    // exposed pane.
+    if (e.gesture.direction === "left"){
+        if (this._currentDrag.startOffsetX > 0){
+            restingPoint = 0;
+        } else {
+            restingPoint = -self._currentDrag.buttonsWidth;
+        }
+    } else if (e.gesture.direction === "right"){
+        if (this._currentDrag.startOffsetX < 0){
+            restingPoint = 0;
+        } else {
+            restingPoint = self._currentDrag.buttonsWidth;
+        }
+    }
 
     // Check if the drag didn't clear the buttons mid-point
     // and we aren't moving fast enough to swipe open
@@ -7495,7 +7557,11 @@ ionic.scroll = {
       if (e.gesture.direction == "left" && Math.abs(e.gesture.velocityX) < 0.3) {
         restingPoint = 0;
 
-      } else if (e.gesture.direction == "right") {
+      }
+      // [Ionic 1.1.0]
+      // } else if (e.gesture.direction == "right") {
+      // [NEW - enable left/right swipe]
+      else if (e.gesture.direction == "right" && Math.abs(e.gesture.velocityX) < 0.3) {
         restingPoint = 0;
       }
 
@@ -56138,7 +56204,11 @@ IonicModule
                      isDefined($attrs.uiSref);
       var isComplexItem = isAnchor ||
         //Lame way of testing, but we have to know at compile what to do with the element
-        /ion-(delete|option|reorder)-button/i.test($element.html());
+        // [Ionic 1.1.0]
+        // /ion-(delete|option|reorder)-button/i.test($element.html());
+        // [NEW - enable left/right swipe]
+        // presence of item-swipe-pane makes the ion-item complex too.
+        /ion-(delete|option|reorder)-button|item-swipe-pane/i.test($element.html());
 
       if (isComplexItem) {
         var innerElement = jqLite(isAnchor ? '<a></a>' : '<div></div>');
@@ -59298,5 +59368,82 @@ IonicModule
     }
   };
 });
+
+
+
+/*****************************************************************************/
+/**************************    DIRECTIVE    **********************************/
+/*****************************************************************************/
+/***
+ * item-swipe-pane creates container inside a ion-item, which is visible when
+ * the item is swiped to the left or to the right.
+ * Attribute "direction" controls swipe direction. Possible values are left or
+ * right. Default direction is left.
+ *
+ * ### Notes
+ * - Directive requires changes in ionItem directive and SlideDrag() class in
+ *   ionic.bundle.js.
+ *
+ * @usage
+ *
+ * ```html
+ *   <ion-item>
+ *     <item-swipe-pane direction="right">
+ *       <button class="button icon ion-arrow-right-c"></button>
+ *       Right swipe
+ *     </item-swipe-pane>
+ *   </ion-item>
+ * ```
+ *
+ * ### Known issues:
+ *   Combination of
+ *     <item-swipe-pane direction="left"> and <ion-option-button>
+ *   is discouraged because both directives swipe from right to left, so they
+ *   would overlap, however
+ *     <item-swipe-pane direction="right"> and <ion-option-button> 
+ *   is OK.
+ */
+IonicModule
+.directive('itemSwipePane' , function() {
+  return {
+    restrict:   'E',
+    require:    '^ionItem',
+    link: function (scope, $element, attrs, itemCtrl) {
+      var ITEM_SWIPE_PANE_TPL = '<div class="item-options invisible item-swipe-pane"></div>';
+      var DIRECTION_RIGHT_CLASS = 'direction-right';
+      var container;
+      var direction = 'left';
+      // Set direction
+      if (attrs['direction'] && attrs['direction'] === 'right') {
+        direction = 'right';
+      } else if (attrs['direction'] && attrs['direction'] === 'left') {
+        direction = 'left';
+      }
+
+      if (direction === 'left') {
+        if (!itemCtrl.itemSwipeLeft) {
+          itemCtrl.itemSwipeLeft = angular.element(ITEM_SWIPE_PANE_TPL);
+          itemCtrl.$element.append(itemCtrl.itemSwipeLeft);
+        }
+        container = itemCtrl.itemSwipeLeft;
+      } else if (direction === 'right') {
+        if (!itemCtrl.itemSwipeRight) {
+          itemCtrl.itemSwipeRight = angular.element(ITEM_SWIPE_PANE_TPL);
+          // If direction is right, move position of item options
+          // to the left - override inherited right:0;
+          itemCtrl.itemSwipeRight.css({right: 'auto'});
+          // "direction-right" is container selector.
+          itemCtrl.itemSwipeRight.addClass(DIRECTION_RIGHT_CLASS);
+          itemCtrl.$element.append(itemCtrl.itemSwipeRight);
+        }
+        container = itemCtrl.itemSwipeRight;
+      }
+
+      container.append($element);
+      // Animation to slowly close opened item.
+      itemCtrl.$element.addClass('item-right-editable');
+    } // link
+  }; // return
+}); // item-swipe-pane
 
 })();

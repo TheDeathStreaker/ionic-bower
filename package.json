@@ -1,0 +1,27 @@
+{
+  "name": "@mightyfields/ionic-bower",
+  "version": "1.1.0",
+  "description": "Fork of ionic-bower with added functionality for right swipe",
+  "main": "js/ionic.bundle.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheDeathStreaker/ionic-bower.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/TheDeathStreaker/ionic-bower/issues"
+  },
+  "homepage": "https://github.com/TheDeathStreaker/ionic-bower#readme",
+  "files": [
+    "scss/*",
+    "fonts/*",
+    "js/*"
+  ],
+  "publishConfig": {
+    "registry": "http://repository.comland.si/repository/npm-mf/"
+  }
+}
